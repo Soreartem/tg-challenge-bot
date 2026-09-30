@@ -1,0 +1,22 @@
+name: daily-message
+
+# Запуск каждый день в 03:00 UTC = 06:00 по Москве (без смен часового пояса в РФ)
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - run: node bot.js --once
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
