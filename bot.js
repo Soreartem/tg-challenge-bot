@@ -3,8 +3,9 @@
 const fs = require('fs');
 
 // ---------- Настройки ----------
-const CHAT_ID = ['1330106113', '7975052871'];
-// дата старта: 17 сентября текущего года (день 0 = 17.09, день 1 = 18.09)
+// Массив с ID пользователей, которым будут приходить сообщения
+const CHAT_IDS = ['1330106113', 'ВСТАВЬТЕ_СЮДА_ID_ВТОРОГО_ЧЕЛОВЕКА']; 
+// дата старта: 17 сентября текущего года (день 0 = 17.09, day 1 = 18.09)
 const START = new Date(new Date().getFullYear(), 8, 17);
 const DAY_LIMIT = 100;
 
@@ -15,7 +16,7 @@ const DAY100 = new Date(START.getTime() + DAY_LIMIT * DAY_MS);
 let token = process.env.BOT_TOKEN || null;
 if (!token) {
   try {
-    const m = fs.readFileSync('.env', 'utf8').match(/^BOT_TOKEN\s*=\s*(.+)$/m);
+    const m = fs.readFileSync('.env', 'utf8').match(/^BOT_TOKEN\s*=\s*(.+)\$/m);
     token = m ? m[1].trim() : null;
   } catch {}
 }
@@ -23,7 +24,7 @@ if (!token) {
   console.error('Нет токена: не задан BOT_TOKEN (и нет .env). Локально — в .env, в GitHub Actions — в Secrets.');
   process.exit(1);
 }
-const API = `https://api.telegram.org/bot${token}/`;
+const API = `https://telegram.org{token}/`;
 
 function dayCount() {
   const now = new Date();
@@ -52,6 +53,7 @@ function ru(n, one, few, many) {
   return n + ' ' + many;
 }
 
+// Измененная функция duration для работы с CHAT_IDS внутри (если вызывается там)
 function duration(day) {
   const months = Math.floor(day / 30);
   const weeks = Math.floor((day % 30) / 7);
@@ -109,10 +111,8 @@ function buildMessage(day) {
   );
 }
 
-// ---------- Отправка ----------
-// ---------- Отправка ----------
+// ---------- Отправка нескольким пользователям ----------
 async function send(text) {
-  // Перебираем все ID из массива CHAT_IDS
   for (const chatId of CHAT_IDS) {
     try {
       const res = await fetch(`${API}sendMessage`, {
@@ -122,16 +122,15 @@ async function send(text) {
       });
       const data = await res.json();
       if (!data.ok) {
-        console.error(`Ошибка отправки для ID ${chatId}:`, data.description || 'неизвестная ошибка');
+        console.error(`Ошибка отправки для ID ${chatId}:`, data.description || 'ошибка от Telegram');
       } else {
-        console.log(`Сообщение успешно отправлено пользователю ${chatId}`);
+        console.log(`Сообщение успешно отправлено пользователю ${chatId} ✓`);
       }
     } catch (e) {
       console.error(`Не удалось связаться с Telegram API для ID ${chatId}:`, e.message);
     }
   }
 }
-
 
 // ---------- Расписание ----------
 function next6AM(now) {
@@ -160,21 +159,21 @@ async function main() {
   if (process.argv.includes('--once')) {
     if (d0 >= 1 && d0 <= 101) {
       await send(buildMessage(d0));
-      console.log(`День ${d0} отправлен ✓`);
+      console.log(`День ${d0} обработан.`);
     } else if (d0 > 101) {
       console.log('Челлендж завершён, сообщений больше не отправляем.');
     }
     process.exit(0);
   }
 
-  // --test: отправить за сегодня, помечить как отправленный и выйти (для проверки)
+  // --test: отправить за сегодня, пометить как отправленный и выйти (для проверки)
   if (process.argv.includes('--test')) {
     await send(buildMessage(d0));
     if (d0 >= 1 && d0 <= 101) {
       sent.add(todayKey(new Date()));
       persistSent();
     }
-    console.log('Тестовое сообщение отправлено ✓ (сегодняшний день помечен как отправленный)');
+    console.log('Тестовое сообщение отправлено ✓');
     process.exit(0);
   }
 
