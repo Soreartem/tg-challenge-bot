@@ -24,7 +24,7 @@ if (!token) {
   console.error('Нет токена: не задан BOT_TOKEN (и нет .env). Локально — в .env, в GitHub Actions — в Secrets.');
   process.exit(1);
 }
-const API = `https://telegram.org{token}/`;
+const API = `https://api.telegram.org/bot${token}/`;
 
 function dayCount() {
   const now = new Date();
