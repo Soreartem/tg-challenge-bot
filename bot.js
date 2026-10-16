@@ -3,7 +3,7 @@
 const fs = require('fs');
 
 // ---------- Настройки ----------
-const CHAT_ID = '1330106113';
+const CHAT_ID = ['1330106113', '7975052871'];
 // дата старта: 17 сентября текущего года (день 0 = 17.09, день 1 = 18.09)
 const START = new Date(new Date().getFullYear(), 8, 17);
 const DAY_LIMIT = 100;
@@ -110,15 +110,28 @@ function buildMessage(day) {
 }
 
 // ---------- Отправка ----------
+// ---------- Отправка ----------
 async function send(text) {
-  const res = await fetch(`${API}sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: CHAT_ID, text }),
-  });
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.description || 'ошибка от Telegram');
+  // Перебираем все ID из массива CHAT_IDS
+  for (const chatId of CHAT_IDS) {
+    try {
+      const res = await fetch(`${API}sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text }),
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        console.error(`Ошибка отправки для ID ${chatId}:`, data.description || 'неизвестная ошибка');
+      } else {
+        console.log(`Сообщение успешно отправлено пользователю ${chatId}`);
+      }
+    } catch (e) {
+      console.error(`Не удалось связаться с Telegram API для ID ${chatId}:`, e.message);
+    }
+  }
 }
+
 
 // ---------- Расписание ----------
 function next6AM(now) {
