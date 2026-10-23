@@ -1,216 +1,143 @@
-'use strict';
+// Укажи дату начала своего челленджа в формате ГГГГ-ММ-ДД:
+const CHALLENGE_START = process.env.START_DATE || '2026-10-01';
 
-const fs = require('fs');
+// Подхватываем токен и ID чата из настроек GitHub Actions
+const BOT_TOKEN = process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || process.env.TOKEN;
+const CHAT_ID = process.env.CHAT_ID || process.env.TELEGRAM_CHAT_ID || process.env.USER_ID;
 
-// ---------- Настройки ----------
-// Массив с ID пользователей, которым будут приходить сообщения
-const CHAT_IDS = ['1330106113', '7975052871']; 
-// дата старта: 17 сентября текущего года (день 0 = 17.09, day 1 = 18.09)
-const START = new Date(new Date().getFullYear(), 8, 17);
-const DAY_LIMIT = 100;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-const DAY100 = new Date(START.getTime() + DAY_LIMIT * DAY_MS);
-
-// ---------- Токен: из переменной BOT_TOKEN или из .env ----------
-let token = process.env.BOT_TOKEN || null;
-if (!token) {
-  try {
-    const m = fs.readFileSync('.env', 'utf8').match(/^BOT_TOKEN\s*=\s*(.+)\$/m);
-    token = m ? m[1].trim() : null;
-  } catch {}
-}
-if (!token) {
-  console.error('Нет токена: не задан BOT_TOKEN (и нет .env). Локально — в .env, в GitHub Actions — в Secrets.');
-  process.exit(1);
-}
-const API = `https://api.telegram.org/bot${token}/`;
-
-function dayCount() {
-  const now = new Date();
-  return Math.floor(
-    (now - new Date(START.getFullYear(), START.getMonth(), START.getDate())) / DAY_MS
-  );
+if (!BOT_TOKEN || !CHAT_ID) {
+    console.error('❌ Ошибка: Не найдены BOT_TOKEN или CHAT_ID в переменных окружения!');
+    process.exit(1);
 }
 
-function todayKey(d) {
-  return (
-    d.getFullYear() +
-    '-' +
-    String(d.getMonth() + 1).padStart(2, '0') +
-    '-' +
-    String(d.getDate()).padStart(2, '0')
-  );
-}
-
-// ---------- Тексты ----------
-function ru(n, one, few, many) {
-  const n10 = n % 10;
-  const n100 = n % 100;
-  if (n100 > 4 && n100 < 20) return n + ' ' + many;
-  if (n10 === 1) return n + ' ' + one;
-  if (n10 >= 2 && n10 <= 4) return n + ' ' + few;
-  return n + ' ' + many;
-}
-
-// Измененная функция duration для работы с CHAT_IDS внутри (если вызывается там)
-function duration(day) {
-  const months = Math.floor(day / 30);
-  const weeks = Math.floor((day % 30) / 7);
-  const days = day % 7;
-  const parts = [
-    months ? ru(months, 'месяц', 'месяца', 'месяцев') : '',
-    weeks ? ru(weeks, 'неделя', 'недели', 'недель') : '',
-    days ? ru(days, 'день', 'дня', 'дней') : '',
-  ].filter(Boolean);
-  return parts.join(' и ');
-}
-
-const MILESTONES = {
-  1: '🥂 Первый день без! Начат — и каждая трезвая часика сейчас стоит дороже.',
-  7: '🔥 Целая неделя без! 168 часов. Первая волна тяги уже позади, ты в деле.',
-  14: '🔥 Две недели без! 336 часов. Держись, самое сложное уже прошло.',
-  21: '💪 Три недели без. Сильнейшая треть пути позади.',
-  30: '🎉 ЦЕЛЫЙ МЕСЯЦ без! 720 часов трезвости. Уже месяц — это мощно.',
-  60: '🚀 Два месяца без. 1440 часов чёткой головы, и ты всё ещё идёшь.',
-  90: '🌟 Три месяца — 90 дней! До финиша всего 10 дней. Почти там!',
-  99: '🏁 Один день до победы! Завтра 100/100. Держись до финишной прямой!',
-  100:
-    '🏆\n\n🎉 100/100 — ЧЕЛЛЕНДЖ ПРОЙДЕН!\n\n100 дней без капли — 2400 часов трезвости. Это не просто стрик, это новая жизнь. Ты победил цель — 100-дневный челлендж официально завершен.\n\nС днём 100-й трезвости! Ты на это заслуженно заработал 🥳🔥',
-  101:
-    '🥇\n\nОдин день за финишной прямой. Челлендж закончен, а ты — всё ещё держишься.\n\nДалее уже не «декад», а просто жизнь без алкоголя. Никаких дней и процентов — просто так и живётся. Ты выиграл. Настоящего, по-настоящему. 🏆🔥',
-};
-
-const FACTS = [
-  (d) => `${d} дней трезвости — уже ${d * 24} часов чёткой головы.`,
-  (d) => `Дней до финиша: ${DAY_LIMIT - d}. Часов до него: ${(DAY_LIMIT - d) * 24}.`,
-  'Система вознаграждения мозга восстанавливается по расписанию: через неделю стабильнее сон, через 2–3 недели — вкус и энергия.',
-  'Печень начинает восстанавливаться сразу: уже 1 день трезвости снижает нагрузку.',
-  'Кишечные бактерии начинают перестраиваться с момента, как алкоголь ушёл из организма — трезвость помогает микробиому.',
-  'Алкоголь обезвоживает: ~200 мл воды на бокал вина. Полный день трезвости = 576 таких бокалов.',
-  'С алкоголем нарушается сон REM-фазы; через несколько дней трезвости сон становится глубже и ты просыпаешься бодрее.',
-  'ГАМК и дофамин перестраиваются за 1–3 недели без алкоголя — настроение перестаёт «качаться».',
-  'Каждые 2 часа трезвости — это больше кислорода и питательных веществ, чем дало бы бокал.',
-  'В 100 днях тебя ждёт 2400 часов трезвости. Это 100 полных дней, 100 полных ночей — почти целые лето и осень.',
+// База крутых сообщений на каждый день
+const DAILY_QUOTES = [
+    "Алкоголь — это кредит, который ты берешь у своего завтрашнего состояния под конский процент. Сегодня ты в плюсе.",
+    "Пока кто-то сливает тестостерон и прогресс в банку пива, ты строишь лучшую версию себя. Продолжаем.",
+    "Одна пьянка откатывает силовые и восстановление на неделю назад. Твой труд стоит дороже пары часов тумана в голове.",
+    "Трезвость — это легальный чит-код. Больше энергии, чище голова, жестче дисциплина.",
+    "Сорваться легко — для этого вообще ничего делать не надо. А вот держать слово перед самим собой — это уровень.",
+    "Помни: еще ни один человек в мире не проснулся утром со словами «Блин, как жаль, что я вчера не нажрался».",
+    "Дофамин от реальных побед и прогресса в разы мощнее дешевого кайфа со стакана.",
+    "Каждый сухой день — это еще один кирпич в твой характер. Если контролируешь свои слабости, контролируешь всё.",
+    "Спирт просто выключает мозг и крадет время. Ты выбрал играть в эту жизнь на максималках и с ясной башкой.",
+    "Твоя нервная система, сон и форма сейчас восстанавливаются на 100%. Не тормози этот процесс.",
+    "Слабый ищет повод выпить («устал», «стресс», «праздник»). Сильный просто делает то, что решил.",
+    "Деньги, которые не ушли в бар и алкомаркет, работают на тебя, а не на чужой карман и твоё похмелье.",
+    "Посмотри, сколько дней уже за спиной. Обнулить такой стрик ради пары часов мутного кайфа — вообще не вариант.",
+    "Алкоголь не снимает стресс, он просто ставит проблемы на паузу и возвращает их утром с процентами.",
+    "Когда пропадает мотивация — включается дисциплина. Мотивация — это эмоция, дисциплина — это решение."
 ];
 
-function fact(day) {
-  const f = FACTS[Math.floor(Math.random() * FACTS.length)];
-  return typeof f === 'function' ? f(day) : f;
-}
+// Особые сообщения для ПЯТНИЦЫ и СУББОТЫ (защита от срыва)
+const WEEKEND_QUOTES = [
+    "⚠️ ВНИМАНИЕ: Выходные — главная ловушка. Сегодня куча людей сольет свои бабки, форму и утро в унитаз. А ты завтра проснешься бодрым королем.",
+    "🔥 Пятничный чекпоинт! Соблазн высокий, но именно в такие вечера проверяется настоящий характер. Перетерпи вечер — утром скажешь себе спасибо.",
+    "🛡 Режим титана. Пока остальные уходят в алко-аут на выходные, ты сохраняешь фокус, тестостерон и прогресс.",
+    "💣 Самый кайф трезвых выходных — проснуться утром без сушняка, головной боли и стыда. Не меняй это состояние на пару часов мутного угара."
+];
 
-function buildMessage(day) {
-  if (day === 101) return MILESTONES[101];
-  if (day === 100) return MILESTONES[100];
-  const ms = MILESTONES[day];
-  if (ms) return `🔥 ${day}/100 · ${day}%\n${ms}`;
-  return (
-    `🔥 ${day}/100 · ${day}%\n` +
-    `${duration(day)} без — уже ${day * 24} часов.\n\n` +
-    fact(day)
-  );
-}
+// Промпты для генерации новой ИИ-картинки каждый день
+const IMAGE_PROMPTS = [
+    "gigachad muscular man training in dark hardcore gym, heavy barbell, cinematic lighting, 8k, discipline",
+    "stoic spartan warrior standing in rain looking at sunrise over mountains, epic dark lighting, 8k",
+    "cyberpunk samurai walking away from neon bar in rain, discipline and focus, masterpiece, 8k",
+    "heavy iron dumbbells on gym floor with chalk dust in air, dramatic spotlight, brutal gym aesthetic",
+    "fighter in boxing ring wrapping hands, intense gaze, dark background, sweat and grit, 8k",
+    "lone wolf standing on snowy mountain peak under night sky, powerful epic wallpaper, 8k"
+];
 
-// ---------- Отправка нескольким пользователям ----------
-async function send(text) {
-  for (const chatId of CHAT_IDS) {
-    try {
-      const res = await fetch(`${API}sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text }),
-      });
-      const data = await res.json();
-      if (!data.ok) {
-        console.error(`Ошибка отправки для ID ${chatId}:`, data.description || 'ошибка от Telegram');
-      } else {
-        console.log(`Сообщение успешно отправлено пользователю ${chatId} ✓`);
-      }
-    } catch (e) {
-      console.error(`Не удалось связаться с Telegram API для ID ${chatId}:`, e.message);
-    }
-  }
-}
+// Запасные атмосферные фото (зал, дисциплина, горы), если генератор долго думает
+const FALLBACK_PHOTOS = [
+    "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1080&q=80",
+    "https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=1080&q=80",
+    "https://images.unsplash.com/photo-1526506118085-60ce8714f8c5?w=1080&q=80",
+    "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=1080&q=80",
+    "https://images.unsplash.com/photo-1517963879433-6ad2b056d712?w=1080&q=80"
+];
 
-// ---------- Расписание ----------
-function next6AM(now) {
-  const d = new Date(now);
-  d.setHours(6, 0, 0, 0);
-  if (d <= now) d.setDate(d.getDate() + 1);
-  return d;
-}
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-const SENT_FILE = '.sentDays';
-let sent = new Set();
-try {
-  sent = new Set(fs.readFileSync(SENT_FILE, 'utf8').split('\n').filter(Boolean));
-} catch {}
-function persistSent() {
-  fs.writeFileSync(SENT_FILE, Array.from(sent).join('\n'));
-}
-
-async function main() {
-  console.log(`Челлендж: старт 17.09.2025 → 100-й день: ${DAY100.toLocaleDateString('ru-RU')}`);
-  const d0 = dayCount();
-  console.log(`Сегодня: день ${d0}.`);
-
-  // --once: отправить сообщение за сегодня и выйти (режим GitHub Actions)
-  if (process.argv.includes('--once')) {
-    if (d0 >= 1 && d0 <= 101) {
-      await send(buildMessage(d0));
-      console.log(`День ${d0} обработан.`);
-    } else if (d0 > 101) {
-      console.log('Челлендж завершён, сообщений больше не отправляем.');
-    }
-    process.exit(0);
-  }
-
-  // --test: отправить за сегодня, пометить как отправленный и выйти (для проверки)
-  if (process.argv.includes('--test')) {
-    await send(buildMessage(d0));
-    if (d0 >= 1 && d0 <= 101) {
-      sent.add(todayKey(new Date()));
-      persistSent();
-    }
-    console.log('Тестовое сообщение отправлено ✓');
-    process.exit(0);
-  }
-
-  process.on('SIGINT', () => {
-    console.log('\nБот остановлен, прогресс сохранён.');
-    process.exit(0);
-  });
-
-  for (;;) {
+function getStatsAndCaption() {
+    const start = new Date(CHALLENGE_START);
     const now = new Date();
-    const d = dayCount();
-    const tk = todayKey(now);
+    const days = Math.max(1, Math.floor((now - start) / (1000 * 60 * 60 * 24)) + 1);
 
-    if (d > 101) {
-      console.log('Готово: все сообщения отправлены, челлендж завершён. Выключаю.');
-      break;
-    }
-    if (d >= 1 && !sent.has(tk)) {
-      try {
-        await send(buildMessage(d));
-        sent.add(tk);
-        persistSent();
-        console.log(`День ${d} отправлен ✓`);
-      } catch (e) {
-        console.error('Не отправилось (будет повтор):', e.message);
-      }
-    }
+    const moneySaved = (days * 350).toLocaleString('ru-RU');
+    const caloriesSaved = (days * 250).toLocaleString('ru-RU');
 
-    const target = next6AM(now);
-    const failed = d >= 1 && d <= 101 && !sent.has(tk);
-    const waitMs = failed ? Math.min(15 * 60000, target - now) : target - now;
-    console.log('Следующая проверка: ' + new Date(now + waitMs).toLocaleString('ru-RU'));
-    await sleep(waitMs);
-  }
+    let badge = "👊 СТАРТ РЕЖИМА";
+    if (days >= 90) badge = "🦾 ТИТАН (90+ ДНЕЙ)";
+    else if (days >= 60) badge = "🔥 КРЕМЕНЬ (60+ ДНЕЙ)";
+    else if (days >= 30) badge = "⚔️ СПАРТАНЕЦ (1+ МЕСЯЦ)";
+    else if (days >= 14) badge = "🚀 НА ХОДУ (2+ НЕДЕЛИ)";
+    else if (days >= 7) badge = "⚡️ НЕДЕЛЯ В КОПИЛКЕ";
+
+    const dayOfWeek = now.getDay();
+    const isWeekend = (dayOfWeek === 5 || dayOfWeek === 6);
+    const quoteList = isWeekend ? WEEKEND_QUOTES : DAILY_QUOTES;
+    const quote = quoteList[days % quoteList.length];
+
+    const caption = [
+        `🔥 *ДЕНЬ ${days} БЕЗ АЛКОГОЛЯ* 🔥`,
+        `Статус: *${badge}*`,
+        ``,
+        `💬 _«${quote}»_`,
+        ``,
+        `📊 *Твой профит за это время:*`,
+        `💰 Не пропито бабок: ~*${moneySaved} ₽*`,
+        `🏋️‍♂️ Минус пустых калорий: ~*${caloriesSaved} ккал*`,
+        ``,
+        `Ни шагу назад. Держим строй! ✊`
+    ].join('\n');
+
+    return { days, caption };
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+async function fetchImageBuffer(days) {
+    const prompt = encodeURIComponent(IMAGE_PROMPTS[days % IMAGE_PROMPTS.length]);
+    const aiUrl = `https://image.pollinations.ai/prompt/${prompt}?width=1024&height=1024&nologo=true&seed=${days * 777}`;
+
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        const res = await fetch(aiUrl, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (res.ok) return Buffer.from(await res.arrayBuffer());
+    } catch (e) {
+        console.log('ИИ-генератор занят, беру фото из запаса...');
+    }
+
+    const fallbackUrl = FALLBACK_PHOTOS[days % FALLBACK_PHOTOS.length];
+    const res = await fetch(fallbackUrl);
+    return Buffer.from(await res.arrayBuffer());
+}
+
+async function run() {
+    const { days, caption } = getStatsAndCaption();
+    console.log(`Генерирую мотивацию на день ${days}...`);
+
+    try {
+        const imgBuffer = await fetchImageBuffer(days);
+        const formData = new FormData();
+        formData.append('chat_id', CHAT_ID);
+        formData.append('caption', caption);
+        formData.append('parse_mode', 'Markdown');
+        formData.append('photo', new Blob([imgBuffer], { type: 'image/jpeg' }), 'motivation.jpg');
+
+        const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(JSON.stringify(data));
+        console.log('✅ Успешно отправлено с фото!');
+    } catch (err) {
+        console.error('Ошибка отправки фото, шлю текстом:', err.message);
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: CHAT_ID, text: caption, parse_mode: 'Markdown' })
+        });
+    }
+}
+
+run();
