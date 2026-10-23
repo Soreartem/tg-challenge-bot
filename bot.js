@@ -22,10 +22,19 @@ if (!token) {
 const API = `https://api.telegram.org/bot${token}/`;
 
 function dayCount() {
+  // Получаем текущее время и переводим в московское (UTC+3)
   const now = new Date();
-  return Math.max(1, Math.floor(
-    (now - new Date(START.getFullYear(), START.getMonth(), START.getDate())) / DAY_MS
-  ));
+  const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const moscowTime = new Date(utcTime + (3 * 3600 * 1000));
+  
+  // Дата старта (17 сентября)
+  const startMoscow = new Date(START.getFullYear(), START.getMonth(), START.getDate());
+  
+  // Считаем разницу именно по московским суткам
+  const moscowMidnight = new Date(moscowTime.getFullYear(), moscowTime.getMonth(), moscowTime.getDate());
+  const diffTime = moscowMidnight - startMoscow;
+  
+  return Math.max(1, Math.floor(diffTime / DAY_MS) + 1);
 }
 
 // ---------- Промпты для генерации ИИ-артов ----------
